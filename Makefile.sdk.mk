@@ -1,3 +1,5 @@
+include config.mk
+
 MAKE_J ?= -j 8
 
 repo_base_url := "git://github.com/frida"
@@ -30,6 +32,8 @@ else
 endif
 host_platform_arch := $(host_platform)-$(host_arch)
 
+enable_diet := $(shell echo $(host_platform_arch) | egrep -q "^(linux-arm|linux-armhf|linux-mips|linux-mipsel|qnx-.+)$$" && echo 1 || echo 0)
+
 
 ifeq ($(host_platform), mac)
 	iconv := build/fs-%/lib/libiconv.a
@@ -38,21 +42,21 @@ ifeq ($(host_platform), ios)
 	iconv := build/fs-%/lib/libiconv.a
 endif
 ifeq ($(host_platform), linux)
-	xz := build/fs-%/lib/pkgconfig/liblzma.pc
 	unwind := build/fs-%/lib/pkgconfig/libunwind.pc
 	bfd := build/fs-%/lib/libbfd.a
 endif
 ifeq ($(host_platform), android)
-	xz := build/fs-%/lib/pkgconfig/liblzma.pc
 	unwind := build/fs-%/lib/pkgconfig/libunwind.pc
 	iconv := build/fs-%/lib/libiconv.a
 	bfd := build/fs-%/lib/libbfd.a
 endif
 ifeq ($(host_platform), qnx)
-	xz := build/fs-%/lib/pkgconfig/liblzma.pc
 	unwind := build/fs-%/lib/pkgconfig/libunwind.pc
 	iconv := build/fs-%/lib/libiconv.a
 	bfd := build/fs-%/lib/libbfd.a
+endif
+ifeq ($(enable_diet), 0)
+	v8 := build/fs-%/lib/pkgconfig/v8.pc
 endif
 
 
@@ -73,7 +77,7 @@ build/sdk-$(host_platform)-$(host_arch).tar.bz2: build/fs-tmp-$(host_platform_ar
 
 build/fs-tmp-%/.package-stamp: \
 		build/fs-%/lib/libz.a \
-		$(xz) \
+		build/fs-%/lib/pkgconfig/liblzma.pc \
 		$(unwind) \
 		$(iconv) \
 		$(bfd) \
@@ -81,10 +85,12 @@ build/fs-tmp-%/.package-stamp: \
 		build/fs-%/lib/pkgconfig/glib-2.0.pc \
 		build/fs-%/lib/pkgconfig/gee-0.8.pc \
 		build/fs-%/lib/pkgconfig/json-glib-1.0.pc \
-		build/fs-%/lib/pkgconfig/v8.pc
+		$(v8)
 	$(RM) -r $(@D)/package
 	mkdir -p $(@D)/package
 	cd build/fs-$* \
+		&& [ -d lib32 ] && lib32=lib32 || lib32= \
+		&& [ -d lib64 ] && lib64=lib64 || lib64= \
 		&& tar -c \
 			include \
 			lib/*.a \
@@ -92,13 +98,15 @@ build/fs-tmp-%/.package-stamp: \
 			lib/glib-2.0 \
 			lib/libffi* \
 			lib/pkgconfig \
+			$$lib32 \
+			$$lib64 \
 			share/aclocal \
 			share/glib-2.0/schemas \
 			share/vala \
 			| tar -C $(abspath $(@D)/package) -xf -
 	releng/relocatify.sh $(@D)/package $(abspath build/fs-$*)
 ifeq ($(host_platform), ios)
-	cp /System/Library/Frameworks/Kernel.framework/Versions/A/Headers/mach/mach_vm.h $(@D)/package/include/frida_mach_vm.h
+	cp $(shell xcrun --sdk macosx --show-sdk-path)/usr/include/mach/mach_vm.h $(@D)/package/include/frida_mach_vm.h
 endif
 	@touch $@
 
@@ -119,6 +127,22 @@ build/fs-tmp-%/zlib/Makefile: build/fs-env-%.rc build/.zlib-stamp
 		&& . $$CONFIG_SITE \
 		&& export CFLAGS CXXFLAGS OBJCFLAGS \
 		&& case "$*" in \
+			linux-arm) \
+				export PATH="$$(dirname $$NM):$$PATH"; \
+				export CHOST="arm-linux-gnueabi"; \
+				;; \
+			linux-armhf) \
+				export PATH="$$(dirname $$NM):$$PATH"; \
+				export CHOST="arm-linux-gnueabihf"; \
+				;; \
+			linux-mips) \
+				export PATH="$$(dirname $$NM):$$PATH"; \
+				export CHOST="mips-linux"; \
+				;; \
+			linux-mipsel) \
+				export PATH="$$(dirname $$NM):$$PATH"; \
+				export CHOST="mipsel-linux"; \
+				;; \
 			android-i386) \
 				export PATH="$$(dirname $$NM):$$PATH"; \
 				export CHOST="i686-linux-android"; \
@@ -141,7 +165,11 @@ build/fs-tmp-%/zlib/Makefile: build/fs-env-%.rc build/.zlib-stamp
 				;; \
 			qnx-arm) \
 				export PATH="$$(dirname $$NM):$$PATH"; \
-				export CHOST="arm-unknown-nto-qnx6.6.0eabi"; \
+				export CHOST="arm-unknown-nto-qnx6.5.0"; \
+				;; \
+			qnx-armeabi) \
+				export PATH="$$(dirname $$NM):$$PATH"; \
+				export CHOST="arm-unknown-nto-qnx6.5.0eabi"; \
 				;; \
 		esac \
 		&& cd $(@D) \
@@ -191,7 +219,7 @@ build/.binutils-stamp:
 	mkdir binutils
 	cd binutils \
 		&& $(download) http://gnuftp.uib.no/binutils/binutils-$(binutils_version).tar.bz2 | tar -xj --strip-components 1 \
-		&& patch -p1 < ../releng/patches/binutils-silence-linker-warning.patch \
+		&& patch -p1 < ../releng/patches/binutils-warnings.patch \
 		&& patch -p1 < ../releng/patches/binutils-android.patch \
 		&& patch -p1 < ../releng/patches/binutils-qnx.patch
 	@mkdir -p $(@D)
@@ -260,7 +288,7 @@ endef
 
 $(eval $(call make-git-module-rules,xz,build/fs-%/lib/pkgconfig/liblzma.pc,))
 
-$(eval $(call make-git-module-rules,libunwind,build/fs-%/lib/pkgconfig/libunwind.pc,$(xz)))
+$(eval $(call make-git-module-rules,libunwind,build/fs-%/lib/pkgconfig/libunwind.pc,build/fs-%/lib/pkgconfig/liblzma.pc))
 
 $(eval $(call make-git-module-rules,libffi,build/fs-%/lib/pkgconfig/libffi.pc,))
 
@@ -282,49 +310,47 @@ endif
 ifeq ($(host_arch), arm)
 	v8_arch := arm
 	android_target_platform := 14
+	v8_abi_flags := -D armfloatabi=softfp
+endif
+ifeq ($(host_arch), armeabi)
+	v8_arch := arm
+	android_target_platform := 14
+	v8_abi_flags := -D armfloatabi=softfp
+endif
+ifeq ($(host_arch), armhf)
+	v8_arch := arm
+	android_target_platform := 14
+	v8_abi_flags := -D armfloatabi=hard
 endif
 ifeq ($(host_arch), arm64)
 	v8_arch := arm64
 	android_target_platform := 21
 endif
 
-ifeq ($(host_platform), linux)
-	v8_host_flags := -f make-linux -D linux_use_bundled_binutils=0 -D linux_use_bundled_gold=0 -D linux_use_gold_flags=0
-	v8_libs_private := " -lrt"
+ifeq ($(build_platform), mac)
+	v8_build_flags := -D clang_xcode=1
 endif
-ifeq ($(host_platform), qnx)
-	v8_host_flags := -f make-qnx
-	v8_libs_private := " -lbacktrace"
+ifeq ($(host_platform), linux)
+	v8_host_flags := -f make-linux -D clang=0 -D host_clang=0 -D linux_use_bundled_binutils=0 -D linux_use_bundled_gold=0 -D linux_use_gold_flags=0
+	v8_libs_private := "-lrt"
 endif
 ifeq ($(host_platform), android)
 	v8_flavor_prefix := android_
 	v8_host_flags := -f make-android -D android_ndk_root=$(ANDROID_NDK_ROOT) -D android_sysroot=$(ANDROID_NDK_ROOT) -D android_target_platform=$(android_target_platform) -D clang=1
-	v8_libs_private := " -lm"
+	v8_libs_private := "-llog -lm"
 endif
 ifeq ($(host_platform), mac)
-	v8_host_flags := -f make-mac -D mac_deployment_target=10.7 -D clang=1
+	v8_host_flags := -f make-mac -D mac_deployment_target=10.9 -D clang=1
 endif
 ifeq ($(host_platform), ios)
-	v8_host_flags := -f make-mac -D mac_deployment_target=10.7 -D ios_deployment_target=7.0 -D clang=1
+	v8_host_flags := -f make-mac -D mac_deployment_target=10.9 -D ios_deployment_target=7.0 -D clang=1 -D want_separate_host_toolset=1 -D want_separate_host_toolset_mkpeephole=1
 endif
-v8_flags := -D host_os=$(build_platform) -D werror='' -D v8_enable_gdbjit=0 -D v8_enable_i18n_support=0 $(v8_host_flags)
+v8_flags := -D host_os=$(build_platform) -D werror='' -D v8_use_external_startup_data=0 -D v8_enable_gdbjit=0 -D v8_enable_i18n_support=0 $(v8_host_flags) $(v8_build_flags) $(v8_abi_flags)
 
 v8_target := $(v8_flavor_prefix)$(v8_arch).release
 
 ifeq ($(build_platform), mac)
-ifeq ($(host_platform), android)
-	v8_env_vars := \
-		MACOSX_DEPLOYMENT_TARGET="" \
-		CXX="$$CXX" \
-		CXX_host="$$(xcrun --sdk macosx10.10 -f clang++) -stdlib=libc++" \
-		CXX_target="$$CXX" \
-		LINK="$$CXX" \
-		LINK_host="$$(xcrun --sdk macosx10.10 -f clang++) -stdlib=libc++" \
-		CFLAGS="" \
-		CXXFLAGS="" \
-		CPPFLAGS="" \
-		LDFLAGS=""
-else
+ifeq ($(host_platform), mac)
 	v8_env_vars := \
 		MACOSX_DEPLOYMENT_TARGET="" \
 		CXX="$$CXX -stdlib=libc++" \
@@ -332,17 +358,63 @@ else
 		CXX_target="$$CXX -stdlib=libc++" \
 		LINK="$$CXX -stdlib=libc++"
 endif
-else
-ifeq ($(host_platform), qnx)
+ifeq ($(host_platform), ios)
+	mac_sdk_path := $$(xcrun --sdk macosx --show-sdk-path)
 	v8_env_vars := \
-		CXX_host="g++ -std=c++11" \
+		GYP_CROSSCOMPILE=1 \
+		MACOSX_DEPLOYMENT_TARGET="" \
+		CXX="$$CXX -stdlib=libc++" \
+		CXX_host="$$(xcrun --sdk macosx -f clang++) -isysroot $(mac_sdk_path) -stdlib=libc++" \
+		CXX_target="$$CXX -stdlib=libc++" \
+		LINK="$$CXX -stdlib=libc++" \
+		LINK_host="$$(xcrun --sdk macosx -f clang++) -isysroot $(mac_sdk_path) -stdlib=libc++"
+endif
+ifeq ($(host_platform), android)
+	mac_sdk_path := $$(xcrun --sdk macosx --show-sdk-path)
+	v8_env_vars := \
+		MACOSX_DEPLOYMENT_TARGET="" \
+		CXX="$$CXX" \
+		CXX_host="$$(xcrun --sdk macosx -f clang++) -isysroot $(mac_sdk_path) -stdlib=libc++" \
 		CXX_target="$$CXX" \
-		LINK="$$CXX"
+		LINK="$$CXX" \
+		LINK_host="$$(xcrun --sdk macosx -f clang++) -isysroot $(mac_sdk_path) -stdlib=libc++" \
+		CFLAGS="" \
+		CXXFLAGS="" \
+		CPPFLAGS="" \
+		LDFLAGS=""
+endif
+else
+ifeq ($(build_platform), linux)
+ifeq ($(host_platform_arch), linux-arm)
+	v8_env_vars := \
+		CXX="$$CXX" \
+		CXX_host="g++ -m32" \
+		CXX_target="$$CXX" \
+		LINK="$$CXX" \
+		LINK_host="g++ -m32" \
+		CFLAGS="$$CFLAGS" \
+		LDFLAGS="$$LDFLAGS" \
+		CXXFLAGS="$$CXXFLAGS" \
+		CPPFLAGS="$$CPPFLAGS"
+else
+ifeq ($(host_platform_arch), linux-armhf)
+	v8_env_vars := \
+		CXX="$$CXX" \
+		CXX_host="g++ -m32" \
+		CXX_target="$$CXX" \
+		LINK="$$CXX" \
+		LINK_host="g++ -m32" \
+		CFLAGS="$$CFLAGS" \
+		LDFLAGS="$$LDFLAGS" \
+		CXXFLAGS="$$CXXFLAGS" \
+		CPPFLAGS="$$CPPFLAGS"
 else
 	v8_env_vars := \
 		CXX_host="$$CXX" \
 		CXX_target="$$CXX" \
 		LINK="$$CXX"
+endif
+endif
 endif
 endif
 
@@ -362,7 +434,7 @@ build/fs-tmp-%/.v8-source-stamp: build/.v8-stamp
 build/fs-tmp-%/.v8-build-stamp: build/fs-env-%.rc build/fs-tmp-%/.v8-source-stamp
 	. $< \
 		&& cd build/fs-tmp-$*/v8 \
-		&& PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+		&& PATH="/usr/bin:/bin:/usr/sbin:/sbin:$$PATH" \
 			$(v8_env_vars) \
 			make $(MAKE_J) $(v8_target) GYPFLAGS="$(v8_flags)"
 	@touch $@
@@ -376,6 +448,7 @@ build/fs-%/lib/pkgconfig/v8.pc: build/fs-tmp-%/.v8-build-stamp
 	install -m 644 build/fs-tmp-$*/v8/out/$(v8_target)/libv8_libbase.a build/fs-$*/lib
 	install -m 644 build/fs-tmp-$*/v8/out/$(v8_target)/libv8_base.a build/fs-$*/lib
 	install -m 644 build/fs-tmp-$*/v8/out/$(v8_target)/libv8_libplatform.a build/fs-$*/lib
+	install -m 644 build/fs-tmp-$*/v8/out/$(v8_target)/libv8_libsampler.a build/fs-$*/lib
 	install -m 644 build/fs-tmp-$*/v8/out/$(v8_target)/libv8_snapshot.a build/fs-$*/lib
 	install -d $(@D)
 	echo "prefix=\$${frida_sdk_prefix}" > $@.tmp
@@ -385,14 +458,26 @@ build/fs-%/lib/pkgconfig/v8.pc: build/fs-tmp-%/.v8-build-stamp
 	echo "" >> $@.tmp
 	echo "Name: V8" >> $@.tmp
 	echo "Description: V8 JavaScript Engine" >> $@.tmp
-	echo "Version: 4.3.62" >> $@.tmp
-	echo "Libs: -L\$${libdir} -lv8_base -lv8_snapshot -lv8_libplatform -lv8_libbase$(v8_libs_private)" >> $@.tmp
+	echo "Version: 5.4.401.0" >> $@.tmp
+	echo "Libs: -L\$${libdir} -lv8_base -lv8_snapshot -lv8_libplatform -lv8_libsampler -lv8_libbase" >> $@.tmp
+ifdef v8_libs_private
+	echo Libs.private: $(v8_libs_private) >> $@.tmp
+endif
 	echo "Cflags: -I\$${includedir} -I\$${includedir}/include" >> $@.tmp
 	mv $@.tmp $@
 
 
 build/fs-env-%.rc:
-	FRIDA_ENV_NAME=fs FRIDA_ENV_SDK=none FRIDA_HOST=$* ./releng/setup-env.sh
+	FRIDA_HOST=$* \
+		FRIDA_OPTIMIZATION_FLAGS="$(FRIDA_OPTIMIZATION_FLAGS)" \
+		FRIDA_DEBUG_FLAGS="$(FRIDA_DEBUG_FLAGS)" \
+		FRIDA_STRIP=$(FRIDA_STRIP) \
+		FRIDA_DIET=$(FRIDA_DIET) \
+		FRIDA_MAPPER=$(FRIDA_MAPPER) \
+		FRIDA_ASAN=$(FRIDA_ASAN) \
+		FRIDA_ENV_NAME=fs \
+		FRIDA_ENV_SDK=none \
+		./releng/setup-env.sh
 
 
 .PHONY: all

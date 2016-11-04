@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -28,23 +28,23 @@
     <ConfigurationType>Utility</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v140_xp</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Utility</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v140_xp</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Utility</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v140_xp</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Utility</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v140_xp</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -242,6 +242,50 @@ REM. &gt; "$(IntDir)frida-version.stamp"
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)frida-version.stamp</Outputs>
       <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(SolutionDir).git\refs\heads\master</AdditionalInputs>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="windows-babel.txt">
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Installing Babel</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)windows-babel.stamp;%(Outputs)</Outputs>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Installing Babel</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)windows-babel.stamp;%(Outputs)</Outputs>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Installing Babel</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)windows-babel.stamp;%(Outputs)</Outputs>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Installing Babel</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)windows-babel.stamp;%(Outputs)</Outputs>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">call npm --version &gt;NUL 2&gt;NUL
+if errorlevel 1 (
+  echo Node.js not found on your PATH
+  exit 1
+)
+cd "$(ProjectDir)..\frida-gum\bindings\gumjs\"
+call npm install || exit 1
+echo &gt; "$(IntDir)windows-babel.stamp"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">call npm --version &gt;NUL 2&gt;NUL
+if errorlevel 1 (
+  echo Node.js not found on your PATH
+  exit 1
+)
+cd "$(ProjectDir)..\frida-gum\bindings\gumjs\"
+call npm install || exit 1
+echo &gt; "$(IntDir)windows-babel.stamp"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">call npm --version &gt;NUL 2&gt;NUL
+if errorlevel 1 (
+  echo Node.js not found on your PATH
+  exit 1
+)
+cd "$(ProjectDir)..\frida-gum\bindings\gumjs\"
+call npm install || exit 1
+echo &gt; "$(IntDir)windows-babel.stamp"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">call npm --version &gt;NUL 2&gt;NUL
+if errorlevel 1 (
+  echo Node.js not found on your PATH
+  exit 1
+)
+cd "$(ProjectDir)..\frida-gum\bindings\gumjs\"
+call npm install || exit 1
+echo &gt; "$(IntDir)windows-babel.stamp"</Command>
     </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -1,4 +1,6 @@
+*.VC.*
 *.opensdf
+*.pyc
 *.sdf
 *.suo
 *.swp

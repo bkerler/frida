@@ -1,3 +1,5 @@
+include config.mk
+
 MAKE_J ?= -j 8
 repo_base_url = "git://github.com/frida"
 repo_suffix = ".git"
@@ -6,8 +8,8 @@ m4_version := 1.4.17
 autoconf_version := 2.69
 automake_version := 1.15
 libtool_version := 2.4.6
-gettext_version := 0.19.4
-pkg_config_version := 0.28
+gettext_version := 0.19.8.1
+pkg_config_version := 0.29.1
 
 
 build_platform := $(shell uname -s | tr '[A-Z]' '[a-z]' | sed 's,^darwin$$,mac,')
@@ -121,6 +123,12 @@ build/.$1-stamp:
 	$(RM) -r $1
 	mkdir -p $1
 	$(download) $2 | tar -C $1 -xz --strip-components 1
+	if [ -n "$5" ]; then \
+		cd $1; \
+		for patch in $5; do \
+			patch -p1 < ../releng/patches/$$$$patch; \
+		done; \
+	fi
 	@mkdir -p $$(@D)
 	@touch $$@
 
@@ -207,7 +215,7 @@ $(eval $(call make-git-module-rules,libffi,build/ft-%/lib/pkgconfig/libffi.pc,bu
 
 $(eval $(call make-git-module-rules,glib,build/ft-%/bin/glib-genmarshal,build/ft-%/lib/pkgconfig/libffi.pc))
 
-$(eval $(call make-tarball-module-rules,pkg-config,http://pkgconfig.freedesktop.org/releases/pkg-config-$(pkg_config_version).tar.gz,build/ft-%/bin/pkg-config,build/ft-%/bin/glib-genmarshal))
+$(eval $(call make-tarball-module-rules,pkg-config,https://pkgconfig.freedesktop.org/releases/pkg-config-$(pkg_config_version).tar.gz,build/ft-%/bin/pkg-config,build/ft-%/bin/glib-genmarshal,pkg-config-static-glib.patch))
 
 $(eval $(call make-git-module-rules,vala,build/ft-%/bin/valac,build/ft-%/bin/glib-genmarshal))
 
@@ -220,7 +228,16 @@ build/ft-%/bin/dpkg-deb:
 
 
 build/ft-env-%.rc:
-	FRIDA_ENV_NAME=ft FRIDA_ENV_SDK=none FRIDA_HOST=$* ./releng/setup-env.sh
+	FRIDA_HOST=$* \
+		FRIDA_OPTIMIZATION_FLAGS="$(FRIDA_OPTIMIZATION_FLAGS)" \
+		FRIDA_DEBUG_FLAGS="$(FRIDA_DEBUG_FLAGS)" \
+		FRIDA_STRIP=$(FRIDA_STRIP) \
+		FRIDA_DIET=$(FRIDA_DIET) \
+		FRIDA_MAPPER=$(FRIDA_MAPPER) \
+		FRIDA_ASAN=$(FRIDA_ASAN) \
+		FRIDA_ENV_NAME=ft \
+		FRIDA_ENV_SDK=none \
+		./releng/setup-env.sh
 
 
 .PHONY: all
